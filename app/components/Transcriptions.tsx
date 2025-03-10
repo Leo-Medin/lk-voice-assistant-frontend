@@ -1,5 +1,5 @@
-import React, { useEffect, useState } from 'react';
-import { RoomEvent, TranscriptionSegment, Participant, TrackPublication } from 'livekit-client';
+import React, { Dispatch, SetStateAction, useEffect, useRef } from 'react';
+import { RoomEvent, TranscriptionSegment, Participant } from 'livekit-client';
 import { useMaybeRoomContext } from '@livekit/components-react';
 
 interface TranscriptionEntry {
@@ -8,9 +8,10 @@ interface TranscriptionEntry {
   isFinal: boolean;
 }
 
-const Transcriptions: React.FC = () => {
+const Transcriptions = ({ transcriptions, setTranscriptions }: { transcriptions: TranscriptionEntry[], setTranscriptions: Dispatch<SetStateAction<TranscriptionEntry[]>> }) => {
   const room = useMaybeRoomContext();
-  const [transcriptions, setTranscriptions] = useState<TranscriptionEntry[]>([]);
+  // const [transcriptions, setTranscriptions] = useState<TranscriptionEntry[]>([]);
+  const scrollRef = useRef<HTMLDivElement>(null); // Ref for auto-scrolling
 
   useEffect(() => {
     if (!room) return;
@@ -18,7 +19,7 @@ const Transcriptions: React.FC = () => {
     const handleTranscription = (
       segments: TranscriptionSegment[],
       participant?: Participant,
-      publication?: TrackPublication
+      // publication?: TrackPublication
     ) => {
       if (!segments || segments.length === 0) return;
 
@@ -30,18 +31,12 @@ const Transcriptions: React.FC = () => {
 
       setTranscriptions((prev) => {
         if (prev.length > 0 && prev[prev.length - 1].speaker === speaker) {
-          // **Word-by-word updating**
           const lastEntry = prev[prev.length - 1];
 
           if (!lastEntry.isFinal) {
-            return [
-              ...prev.slice(0, -1),
-              { speaker, text, isFinal },
-            ];
+            return [...prev.slice(0, -1), { speaker, text, isFinal }];
           }
         }
-
-        // **Only add new entry if it’s a finalized message**
         return [...prev, { speaker, text, isFinal }];
       });
     };
@@ -53,10 +48,17 @@ const Transcriptions: React.FC = () => {
     };
   }, [room]);
 
+  // **Auto-scroll when new transcription is added**
+  useEffect(() => {
+    if (scrollRef.current) {
+      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    }
+  }, [transcriptions]); // Runs every time transcriptions change
+
   return (
-    <div className="transcriptions p-4 bg-gray-100 shadow-md rounded-md h-48 overflow-y-auto">
-      <h3 className="text-lg font-bold mb-2">Live Transcriptions</h3>
-      {transcriptions.map((entry, index) => (
+    <div ref={scrollRef} className="transcriptions p-4 bg-gray-100 shadow-md rounded-md h-48 overflow-y-auto">
+      <h3 className="text-lg font-bold mb-2" style={{ color: 'lightgrey' }}>Live Transcriptions</h3>
+      {transcriptions?.map((entry, index) => (
         <p key={index} className={entry.speaker === "You" ? "text-blue-600" : "text-black"}>
           <strong>{entry.speaker}:</strong> {entry.text}
         </p>

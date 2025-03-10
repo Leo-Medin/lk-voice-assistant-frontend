@@ -10,7 +10,7 @@ import {
   AgentState,
   DisconnectButton,
 } from "@livekit/components-react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { MutableRefObject, useCallback, useEffect, useRef, useState } from "react";
 import { MediaDeviceFailure } from "livekit-client";
 import type { ConnectionDetails } from "./api/connection-details/route";
 import { NoAgentNotification } from "@/components/NoAgentNotification";
@@ -19,11 +19,18 @@ import { useKrispNoiseFilter } from "@livekit/components-react/krisp";
 import Transcriptions from "./components/Transcriptions";
 import { useRoomContext } from "@livekit/components-react";
 
+interface TranscriptionEntry {
+  speaker: string;
+  text: string;
+  isFinal: boolean;
+}
 export default function Page() {
   const [connectionDetails, updateConnectionDetails] = useState<
     ConnectionDetails | undefined
   >(undefined);
   const [agentState, setAgentState] = useState<AgentState>("disconnected");
+  const silenceStart = useRef<number | null>(null);
+  const [transcriptions, setTranscriptions] = useState<TranscriptionEntry[]>([]);
 
   const onConnectButtonClicked = useCallback(async () => {
     // Generate room connection details, including:
@@ -34,6 +41,9 @@ export default function Page() {
     //
     // In real-world application, you would likely allow the user to specify their
     // own participant name, and possibly to choose from existing rooms to join.
+
+    silenceStart.current = null; // reset silence timeout
+    setTranscriptions([]); // Clear old transcriptions
 
     const url = new URL(
       process.env.NEXT_PUBLIC_CONN_DETAILS_ENDPOINT ??
@@ -62,37 +72,36 @@ export default function Page() {
         }}
         className="grid grid-rows-[2fr_1fr] items-center"
       >
-        <SimpleVoiceAssistant onStateChange={setAgentState} />
+        <SimpleVoiceAssistant onStateChange={setAgentState} silenceStart={silenceStart} />
         <ControlBar
           onConnectButtonClicked={onConnectButtonClicked}
           agentState={agentState}
         />
         <RoomAudioRenderer />
         <NoAgentNotification state={agentState} />
-        <Transcriptions />
+        <Transcriptions transcriptions={transcriptions} setTranscriptions={setTranscriptions}/>
       </LiveKitRoom>
     </main>
   );
 }
 
-function SimpleVoiceAssistant(props: { onStateChange: (state: AgentState) => void }) {
+function SimpleVoiceAssistant({ onStateChange, silenceStart }: { onStateChange: (state: AgentState) => void, silenceStart: MutableRefObject<number | null> }) {
   const { state, audioTrack } = useVoiceAssistant();
-  // const [silenceStart, setSilenceStart] = useState<number | null>(null);
   const silenceThreshold = -50; // Adjust if needed
   const silenceDuration = 10000; // 10 seconds
   const room = useRoomContext(); // ✅ Get the LiveKit room instance
 
   useEffect(() => {
     console.log("Updating agentState to:", state);
-    props.onStateChange(state); // Ensure UI updates correctly
+    onStateChange(state); // Ensure UI updates correctly
   }, [state]);
 
-  const silenceStart = useRef<number | null>(null);
+  // const silenceStart = useRef<number | null>(null);
 
   useEffect(() => {
     console.log("useEffect triggered for silence detection");
   
-    props.onStateChange(state);
+    onStateChange(state);
   
     if (!audioTrack?.publication?.track) {
       console.warn("No valid audio track publication found. Waiting...");
@@ -133,7 +142,7 @@ function SimpleVoiceAssistant(props: { onStateChange: (state: AgentState) => voi
       analyser.getFloatFrequencyData(dataArray);
   
       const maxVolume = Math.max(...Array.from(dataArray));
-      console.log("Current volume level:", maxVolume);
+      // console.log("Current volume level:", maxVolume);
   
       if (maxVolume < silenceThreshold) {
         if (silenceStart.current === null) {
@@ -164,21 +173,8 @@ function SimpleVoiceAssistant(props: { onStateChange: (state: AgentState) => voi
     };
   }, [audioTrack]);
       
-          
-  // function stopListening() {
-  //   console.log("Auto-stopping due to silence");
-  //   props.onStateChange("disconnected");
-  // }
-  // function stopListening() {
-  //   console.log("Auto-stopping due to silence");
-  //   // props.onStateChange("listening"); // Keeps UI active without disconnecting
-  //   props.onStateChange("thinking"); // Moves to a neutral, UI-visible state
-  // }
   async function stopListening() {
     console.log("Auto-stopping due to silence, the state was:", state);
-    // if (state !== "disconnected") {
-    //   props.onStateChange("thinking"); // Keeps UI active
-    // }
 
     if (room) {
       room.disconnect(true); // ✅ Properly disconnects LiveKit session
@@ -191,6 +187,9 @@ function SimpleVoiceAssistant(props: { onStateChange: (state: AgentState) => voi
   
   return (
     <div className="h-[300px] max-w-[90vw] mx-auto">
+      <div style={{ marginTop: '10px', textAlign: 'center' }}>
+        Autolife AI Assistant
+      </div>
       <BarVisualizer state={state} barCount={5} trackRef={audioTrack} className="agent-visualizer" options={{ minHeight: 24 }} />
       <div style={{ textAlign: "center", color: "gray" }}>{state}</div>
     </div>
@@ -210,7 +209,7 @@ function ControlBar(props: {
     krisp.setNoiseFilterEnabled(true);
   }, []);
 
-  console.log("Current agentState:", props.agentState);
+  // console.log("Current agentState:", props.agentState);
 
   return (
     <div className="relative h-[100px]">
