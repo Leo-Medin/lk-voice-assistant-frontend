@@ -70,13 +70,13 @@ export function NoAgentNotification(props: NoAgentNotificationProps) {
             It&apos;s quiet... too quiet. Is your agent lost? Ensure your agent
             is properly configured and running on your machine.
           </p>
-          <a
+          {/* <a
             href="https://docs.livekit.io/agents/quickstarts/s2s/"
             target="_blank"
             className="underline whitespace-nowrap"
           >
             View guide
-          </a>
+          </a> */}
           <button onClick={() => setShowNotification(false)}>
             {/* Close Icon */}
             <svg

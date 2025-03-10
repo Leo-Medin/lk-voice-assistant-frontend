@@ -10,14 +10,13 @@ import {
   AgentState,
   DisconnectButton,
 } from "@livekit/components-react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { MediaDeviceFailure } from "livekit-client";
 import type { ConnectionDetails } from "./api/connection-details/route";
 import { NoAgentNotification } from "@/components/NoAgentNotification";
 import { CloseIcon } from "@/components/CloseIcon";
 import { useKrispNoiseFilter } from "@livekit/components-react/krisp";
 import Transcriptions from "./components/Transcriptions";
-import { useRoomContext } from "@livekit/components-react";
 
 export default function Page() {
   const [connectionDetails, updateConnectionDetails] = useState<
@@ -75,124 +74,30 @@ export default function Page() {
   );
 }
 
-function SimpleVoiceAssistant(props: { onStateChange: (state: AgentState) => void }) {
+function SimpleVoiceAssistant(props: {
+  onStateChange: (state: AgentState) => void;
+}) {
   const { state, audioTrack } = useVoiceAssistant();
-  // const [silenceStart, setSilenceStart] = useState<number | null>(null);
-  const silenceThreshold = -50; // Adjust if needed
-  const silenceDuration = 10000; // 10 seconds
-  const room = useRoomContext(); // ✅ Get the LiveKit room instance
 
   useEffect(() => {
-    console.log("Updating agentState to:", state);
-    props.onStateChange(state); // Ensure UI updates correctly
-  }, [state]);
-
-  const silenceStart = useRef<number | null>(null);
-
-  useEffect(() => {
-    console.log("useEffect triggered for silence detection");
-  
     props.onStateChange(state);
-  
-    if (!audioTrack?.publication?.track) {
-      console.warn("No valid audio track publication found. Waiting...");
-      return;
-    }
-  
-    const mediaStreamTrack = audioTrack.publication.track.mediaStreamTrack;
-    if (!mediaStreamTrack) {
-      console.warn("Could not extract mediaStreamTrack from publication. Waiting...");
-      return;
-    }
-  
-    console.log("Valid mediaStreamTrack detected. Proceeding...");
-  
-    const audioContext = new AudioContext();
-    const mediaStream = new MediaStream();
-    mediaStream.addTrack(mediaStreamTrack);
-  
-    if (mediaStream.getTracks().length === 0) {
-      console.warn("MediaStream is empty. Skipping silence detection.");
-      return;
-    }
-  
-    console.log("Creating audio processing pipeline...");
-    const source = audioContext.createMediaStreamSource(mediaStream);
-    const analyser = audioContext.createAnalyser();
-    source.connect(analyser);
-  
-    let animationFrameId: number | null = null; // Store animation frame ID
-  
-    function checkSilence() {
-      if (state === "disconnected") {
-        console.log("Silence detection stopped.");
-        return; // Stop execution when disconnected
-      }
-  
-      const dataArray = new Float32Array(analyser.frequencyBinCount);
-      analyser.getFloatFrequencyData(dataArray);
-  
-      const maxVolume = Math.max(...Array.from(dataArray));
-      console.log("Current volume level:", maxVolume);
-  
-      if (maxVolume < silenceThreshold) {
-        if (silenceStart.current === null) {
-          silenceStart.current = Date.now();
-        } else if (Date.now() - silenceStart.current > silenceDuration) {
-          console.log("Silence detected. Stopping listening...");
-          stopListening();
-          silenceStart.current = null;
-        }
-      } else {
-        silenceStart.current = null;
-      }
-  
-      animationFrameId = requestAnimationFrame(checkSilence);
-    }
-  
-    console.log("Starting silence detection...");
-    checkSilence(); // Start detection
-  
-    return () => {
-      console.log("Cleaning up: Disconnecting LiveKit & stopping silence detection...");
-      
-      if (animationFrameId) {
-        cancelAnimationFrame(animationFrameId); // ✅ Cancel any pending frame
-      }
-  
-      audioContext.close(); // ✅ Close audio processing
-    };
-  }, [audioTrack]);
-      
-          
-  // function stopListening() {
-  //   console.log("Auto-stopping due to silence");
-  //   props.onStateChange("disconnected");
-  // }
-  // function stopListening() {
-  //   console.log("Auto-stopping due to silence");
-  //   // props.onStateChange("listening"); // Keeps UI active without disconnecting
-  //   props.onStateChange("thinking"); // Moves to a neutral, UI-visible state
-  // }
-  async function stopListening() {
-    console.log("Auto-stopping due to silence, the state was:", state);
-    // if (state !== "disconnected") {
-    //   props.onStateChange("thinking"); // Keeps UI active
-    // }
+  }, [props, state]);
 
-    if (room) {
-      room.disconnect(true); // ✅ Properly disconnects LiveKit session
-      console.log("LiveKit assistant disconnected.");
-    } else {
-      console.warn("No LiveKit room instance found. Cannot disconnect.");
-    }
-  }
-  
-  
   return (
     <div className="h-[300px] max-w-[90vw] mx-auto">
-      <BarVisualizer state={state} barCount={5} trackRef={audioTrack} className="agent-visualizer" options={{ minHeight: 24 }} />
-      <div style={{ textAlign: "center", color: "gray" }}>{state}</div>
+      <BarVisualizer
+        state={state}
+        barCount={5}
+        trackRef={audioTrack}
+        className="agent-visualizer"
+        options={{ minHeight: 24 }}
+      />
+      <div
+        style={{
+          textAlign: 'center',
+          color: 'gray'
+        }}
+      >{state}</div>
     </div>
   );
 }
@@ -209,8 +114,6 @@ function ControlBar(props: {
   useEffect(() => {
     krisp.setNoiseFilterEnabled(true);
   }, []);
-
-  console.log("Current agentState:", props.agentState);
 
   return (
     <div className="relative h-[100px]">
