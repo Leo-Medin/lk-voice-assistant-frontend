@@ -190,6 +190,9 @@ function SimpleVoiceAssistant({ onStateChange, silenceStart }: { onStateChange: 
       <div style={{ marginTop: '10px', textAlign: 'center' }}>
         Autolife AI Assistant
       </div>
+      <div style={{ marginTop: '10px', textAlign: 'center', fontStyle: 'italic', color: 'grey' }}>
+        I speak English, Μιλάω ελληνικά, Я говорю по-русски, Je parle français, Ich spreche Deutsch.
+      </div>
       <BarVisualizer state={state} barCount={5} trackRef={audioTrack} className="agent-visualizer" options={{ minHeight: 24 }} />
       <div style={{ textAlign: "center", color: "gray" }}>{state}</div>
     </div>
