@@ -10,7 +10,7 @@ import {
   AgentState,
   DisconnectButton,
 } from "@livekit/components-react";
-import { MutableRefObject, useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { MediaDeviceFailure } from "livekit-client";
 import type { ConnectionDetails } from "./api/connection-details/route";
 import { NoAgentNotification } from "@/components/NoAgentNotification";
@@ -24,13 +24,27 @@ interface TranscriptionEntry {
   text: string;
   isFinal: boolean;
 }
+
 export default function Page() {
   const [connectionDetails, updateConnectionDetails] = useState<
     ConnectionDetails | undefined
   >(undefined);
   const [agentState, setAgentState] = useState<AgentState>("disconnected");
-  const silenceStart = useRef<number | null>(null);
   const [transcriptions, setTranscriptions] = useState<TranscriptionEntry[]>([]);
+  const lastActivityRef = useRef<number>(Date.now());
+  const inactivityIntervalRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    if (transcriptions.length > 0) {
+        lastActivityRef.current = Date.now();
+    }
+  }, [transcriptions]);
+
+  useEffect(() => {
+    if (agentState === "speaking") {
+        lastActivityRef.current = Date.now();
+    }
+  }, [agentState]);
 
   const onConnectButtonClicked = useCallback(async () => {
     // Generate room connection details, including:
@@ -42,7 +56,8 @@ export default function Page() {
     // In real-world application, you would likely allow the user to specify their
     // own participant name, and possibly to choose from existing rooms to join.
 
-    silenceStart.current = null; // reset silence timeout
+    lastActivityRef.current = Date.now();
+
     setTranscriptions([]); // Clear old transcriptions
 
     const url = new URL(
@@ -72,7 +87,13 @@ export default function Page() {
         }}
         className="grid grid-rows-[2fr_1fr] items-center"
       >
-        <SimpleVoiceAssistant onStateChange={setAgentState} silenceStart={silenceStart} />
+        <InactivityAutoDisconnect
+          agentState={agentState}
+          lastActivityRef={lastActivityRef}
+          inactivityIntervalRef={inactivityIntervalRef}
+          timeoutMs={15000}
+        />
+        <SimpleVoiceAssistant onStateChange={setAgentState} />
         <ControlBar
           onConnectButtonClicked={onConnectButtonClicked}
           agentState={agentState}
@@ -85,18 +106,16 @@ export default function Page() {
   );
 }
 
-function SimpleVoiceAssistant({ onStateChange, silenceStart }: { onStateChange: (state: AgentState) => void, silenceStart: MutableRefObject<number | null> }) {
+function SimpleVoiceAssistant({ onStateChange }: { onStateChange: (state: AgentState) => void }) {
   const { state, audioTrack } = useVoiceAssistant();
-  const silenceThreshold = -50; // Adjust if needed
-  const silenceDuration = 10000; // 10 seconds
-  const room = useRoomContext(); // ✅ Get the LiveKit room instance
+  // const silenceThreshold = -50; // Adjust if needed
+  // const silenceDuration = 15000; // 15 seconds
+  // const room = useRoomContext(); // ✅ Get the LiveKit room instance
 
   useEffect(() => {
     console.log("Updating agentState to:", state);
     onStateChange(state); // Ensure UI updates correctly
   }, [state]);
-
-  // const silenceStart = useRef<number | null>(null);
 
   useEffect(() => {
     console.log("useEffect triggered for silence detection");
@@ -126,41 +145,14 @@ function SimpleVoiceAssistant({ onStateChange, silenceStart }: { onStateChange: 
     }
   
     console.log("Creating audio processing pipeline...");
-    const source = audioContext.createMediaStreamSource(mediaStream);
-    const analyser = audioContext.createAnalyser();
-    source.connect(analyser);
+    // const source = audioContext.createMediaStreamSource(mediaStream);
+    // const analyser = audioContext.createAnalyser();
+    // source.connect(analyser);
   
-    let animationFrameId: number | null = null; // Store animation frame ID
-  
-    function checkSilence() {
-      if (state === "disconnected") {
-        console.log("Silence detection stopped.");
-        return; // Stop execution when disconnected
-      }
-  
-      const dataArray = new Float32Array(analyser.frequencyBinCount);
-      analyser.getFloatFrequencyData(dataArray);
-  
-      const maxVolume = Math.max(...Array.from(dataArray));
-      // console.log("Current volume level:", maxVolume);
-  
-      if (maxVolume < silenceThreshold) {
-        if (silenceStart.current === null) {
-          silenceStart.current = Date.now();
-        } else if (Date.now() - silenceStart.current > silenceDuration) {
-          console.log("Silence detected. Stopping listening...");
-          stopListening();
-          silenceStart.current = null;
-        }
-      } else {
-        silenceStart.current = null;
-      }
-  
-      animationFrameId = requestAnimationFrame(checkSilence);
-    }
-  
+    const animationFrameId: number | null = null; // Store animation frame ID
+
     console.log("Starting silence detection...");
-    checkSilence(); // Start detection
+    // checkSilence(); // Start detection
   
     return () => {
       console.log("Cleaning up: Disconnecting LiveKit & stopping silence detection...");
@@ -173,16 +165,16 @@ function SimpleVoiceAssistant({ onStateChange, silenceStart }: { onStateChange: 
     };
   }, [audioTrack]);
       
-  async function stopListening() {
-    console.log("Auto-stopping due to silence, the state was:", state);
-
-    if (room) {
-      room.disconnect(true); // ✅ Properly disconnects LiveKit session
-      console.log("LiveKit assistant disconnected.");
-    } else {
-      console.warn("No LiveKit room instance found. Cannot disconnect.");
-    }
-  }
+  // async function stopListening() {
+  //   console.log("Auto-stopping due to silence, the state was:", state);
+  //
+  //   if (room) {
+  //     room.disconnect(true); // ✅ Properly disconnects LiveKit session
+  //     console.log("LiveKit assistant disconnected.");
+  //   } else {
+  //     console.warn("No LiveKit room instance found. Cannot disconnect.");
+  //   }
+  // }
   
   
   return (
@@ -256,4 +248,46 @@ function onDeviceFailure(error?: MediaDeviceFailure) {
   alert(
     "Error acquiring camera or microphone permissions. Please make sure you grant the necessary permissions in your browser and reload the tab"
   );
+}
+
+function InactivityAutoDisconnect({
+                                      agentState,
+                                      lastActivityRef,
+                                      inactivityIntervalRef,
+                                      timeoutMs = 15000,
+                                  }: {
+    agentState: AgentState;
+    lastActivityRef: React.MutableRefObject<number>;
+    inactivityIntervalRef: React.MutableRefObject<number | null>;
+    timeoutMs?: number;
+}) {
+    const room = useRoomContext();
+
+    useEffect(() => {
+        if (!room) return;
+
+        // reset and start interval when connected
+        if (inactivityIntervalRef.current) {
+            window.clearInterval(inactivityIntervalRef.current);
+            inactivityIntervalRef.current = null;
+        }
+
+        inactivityIntervalRef.current = window.setInterval(() => {
+            const idleMs = Date.now() - lastActivityRef.current;
+
+            // Do not disconnect while agent is actively speaking
+            if (idleMs > timeoutMs && agentState !== "speaking") {
+                room.disconnect(true);
+            }
+        }, 1000);
+
+        return () => {
+            if (inactivityIntervalRef.current) {
+                window.clearInterval(inactivityIntervalRef.current);
+                inactivityIntervalRef.current = null;
+            }
+        };
+    }, [room, agentState, timeoutMs]);
+
+    return null;
 }
