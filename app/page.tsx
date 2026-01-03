@@ -19,12 +19,6 @@ import { useKrispNoiseFilter } from "@livekit/components-react/krisp";
 import Transcriptions from "./components/Transcriptions";
 import { useRoomContext } from "@livekit/components-react";
 
-interface TranscriptionEntry {
-  speaker: string;
-  text: string;
-  isFinal: boolean;
-}
-
 export default function Page() {
   const [connectionDetails, updateConnectionDetails] = useState<
     ConnectionDetails | undefined
@@ -113,12 +107,12 @@ function SimpleVoiceAssistant({ onStateChange }: { onStateChange: (state: AgentS
   // const room = useRoomContext(); // ✅ Get the LiveKit room instance
 
   useEffect(() => {
-    console.log("Updating agentState to:", state);
+    // console.log("Updating agentState to:", state);
     onStateChange(state); // Ensure UI updates correctly
   }, [state]);
 
   useEffect(() => {
-    console.log("useEffect triggered for silence detection");
+    // console.log("useEffect triggered for silence detection");
   
     onStateChange(state);
   

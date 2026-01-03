@@ -3,41 +3,47 @@ import { RoomEvent, TranscriptionSegment, Participant } from 'livekit-client';
 import { useMaybeRoomContext } from '@livekit/components-react';
 
 interface TranscriptionEntry {
-  speaker: string;
-  text: string;
-  isFinal: boolean;
+    speaker: string;
+    text: string;
+    isFinal: boolean;
+    segmentId: string;
+    ts: number; // stable timestamp for ordering
 }
 
 const Transcriptions = ({ transcriptions, setTranscriptions }: { transcriptions: TranscriptionEntry[], setTranscriptions: Dispatch<SetStateAction<TranscriptionEntry[]>> }) => {
   const room = useMaybeRoomContext();
-  // const [transcriptions, setTranscriptions] = useState<TranscriptionEntry[]>([]);
   const scrollRef = useRef<HTMLDivElement>(null); // Ref for auto-scrolling
+  const segmentTsRef = useRef<Map<string, number>>(new Map());
 
   useEffect(() => {
     if (!room) return;
 
-    const handleTranscription = (
-      segments: TranscriptionSegment[],
-      participant?: Participant,
-      // publication?: TrackPublication
-    ) => {
-      if (!segments || segments.length === 0) return;
+    const handleTranscription = (segments: TranscriptionSegment[], participant?: Participant) => {
+      if (!segments?.length) return;
 
-      const speaker = participant?.isLocal ? 'You' : 'Agent';
-      const lastSegment = segments[segments.length - 1];
+      const speaker = participant?.isLocal ? "You" : "Agent";
+      const seg = segments[segments.length - 1];
+      const text = (seg.text ?? "").trim();
+      // if (!text || text === "…" || text === "...") return;
 
-      const text = lastSegment.text.trim();
-      const isFinal = lastSegment.final || false;
+      const isFinal = !!seg.final;
+      const segmentId = seg.id ?? `${speaker}-${text.slice(0, 16)}`; // seg.id should exist
+
+      // stable timestamp for this segment id
+      let ts = segmentTsRef.current.get(segmentId);
+      if (!ts) {
+          ts = Date.now();
+          segmentTsRef.current.set(segmentId, ts);
+      }
 
       setTranscriptions((prev) => {
-        if (prev.length > 0 && prev[prev.length - 1].speaker === speaker) {
-          const lastEntry = prev[prev.length - 1];
-
-          if (!lastEntry.isFinal) {
-            return [...prev.slice(0, -1), { speaker, text, isFinal }];
+          const idx = prev.findIndex((e) => e.segmentId === segmentId);
+          if (idx !== -1) {
+              const next = prev.slice();
+              next[idx] = { ...next[idx], speaker, text, isFinal };
+              return next;
           }
-        }
-        return [...prev, { speaker, text, isFinal }];
+          return [...prev, { speaker, text, isFinal, segmentId, ts }];
       });
     };
 
@@ -58,11 +64,13 @@ const Transcriptions = ({ transcriptions, setTranscriptions }: { transcriptions:
   return (
     <div ref={scrollRef} className="transcriptions p-4 bg-gray-100 shadow-md rounded-md h-48 overflow-y-auto">
       <h3 className="text-lg font-bold mb-2" style={{ color: 'lightgrey' }}>Live Transcriptions</h3>
-      {transcriptions?.map((entry, index) => (
-        <p key={index} className={entry.speaker === "You" ? "text-blue-600" : "text-black"}>
-          <strong>{entry.speaker}:</strong> {entry.text}
-        </p>
-      ))}
+        {[...transcriptions]
+            .sort((a, b) => a.ts - b.ts)
+            .map((entry, index) => (
+                <p key={entry.segmentId ?? index} className={entry.speaker === "You" ? "text-blue-600" : "text-black"}>
+                    <strong>{entry.speaker}:</strong> {entry.text}
+                </p>
+        ))}
     </div>
   );
 };
