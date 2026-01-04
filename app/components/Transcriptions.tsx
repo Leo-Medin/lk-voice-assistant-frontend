@@ -2,7 +2,7 @@ import React, { Dispatch, SetStateAction, useEffect, useRef } from 'react';
 import { RoomEvent, TranscriptionSegment, Participant } from 'livekit-client';
 import { useMaybeRoomContext } from '@livekit/components-react';
 
-interface TranscriptionEntry {
+export interface TranscriptionEntry {
     speaker: string;
     text: string;
     isFinal: boolean;
@@ -15,19 +15,16 @@ type UiLang = "en" | "el" | "ru";
 // Very simple script-based detector for MVP.
 // Note: Ukrainian/Bulgarian will fall into "ru" bucket due to Cyrillic.
 function detectLangByScript(text: string): UiLang | "unknown" {
-    const t = text.trim();
-    if (!t) return "unknown";
+    const t = (text ?? '').trim();
+    if (!t) return 'en';
 
-    // Greek Unicode ranges (rough but effective)
-    if (/[Ͱ-Ͽἀ-῿]/u.test(t)) return "el";
+    // Greek and Coptic + Greek Extended
+    if (/[\u0370-\u03FF\u1F00-\u1FFF]/.test(t)) return 'el';
 
-    // Cyrillic range
-    if (/[Ѐ-ӿ]/u.test(t)) return "ru";
+    // Cyrillic + Cyrillic Supplement + Cyrillic Extended-A/B
+    if (/[\u0400-\u04FF\u0500-\u052F\u2DE0-\u2DFF\uA640-\uA69F]/.test(t)) return 'ru';
 
-    // Latin letters
-    if (/[A-Za-z]/.test(t)) return "en";
-
-    return "unknown";
+    return 'en';
 }
 
 function placeholderFor(lastAgentLang: UiLang) {

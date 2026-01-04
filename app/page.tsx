@@ -16,7 +16,7 @@ import type { ConnectionDetails } from "./api/connection-details/route";
 import { NoAgentNotification } from "@/components/NoAgentNotification";
 import { CloseIcon } from "@/components/CloseIcon";
 import { useKrispNoiseFilter } from "@livekit/components-react/krisp";
-import Transcriptions from "./components/Transcriptions";
+import Transcriptions, {TranscriptionEntry} from "./components/Transcriptions";
 import { useRoomContext } from "@livekit/components-react";
 import { ConnectionState } from "livekit-client";
 
@@ -101,12 +101,13 @@ export default function Page() {
         <RoomAudioRenderer />
         <NoAgentNotification state={agentState} />
         <Transcriptions transcriptions={transcriptions} setTranscriptions={setTranscriptions}/>
+        <SessionCues agentState={agentState} />
       </LiveKitRoom>
     </main>
   );
 }
 
-function SimpleVoiceAssistant({ onStateChange }: { onStateChange: (state: AgentState) => void }): void {
+function SimpleVoiceAssistant({ onStateChange }: { onStateChange: (state: AgentState) => void }) {
   const { state, audioTrack } = useVoiceAssistant();
 
   useEffect(() => {
@@ -324,3 +325,108 @@ function PushToTalk({ noisyMode }: { noisyMode: boolean }) {
         </button>
     );
 }
+
+function SessionCues({
+                         agentState,
+                         readyUrl = "/sounds/ready.mp3",
+                         stopUrl = "/sounds/stop.mp3",
+                         readyMuteMs = 500,
+                     }: {
+    agentState: AgentState;
+    readyUrl?: string;
+    stopUrl?: string;
+    readyMuteMs?: number;
+}) {
+    const room = useRoomContext();
+
+    const readyAudioRef = useRef<HTMLAudioElement | null>(null);
+    const stopAudioRef = useRef<HTMLAudioElement | null>(null);
+
+    // Plays "ready" only once per connection session
+    const readyPlayedThisSessionRef = useRef(false);
+
+    // Used for mic re-enable timing
+    const timeoutRef = useRef<number | null>(null);
+
+    useEffect(() => {
+        if (!readyAudioRef.current) {
+            const a = new Audio(readyUrl);
+            a.volume = 0.6;
+            a.preload = "auto";
+            readyAudioRef.current = a;
+        }
+        if (!stopAudioRef.current) {
+            const a = new Audio(stopUrl);
+            a.volume = 0.6;
+            a.preload = "auto";
+            stopAudioRef.current = a;
+        }
+    }, [readyUrl, stopUrl]);
+
+    // Reset "ready played" when we disconnect
+    useEffect(() => {
+        if (agentState === "disconnected") {
+            readyPlayedThisSessionRef.current = false;
+        }
+    }, [agentState]);
+
+    // Play READY only on first listening of the session (with brief mic mute)
+    useEffect(() => {
+        if (!room) return;
+        if (agentState !== "listening") return;
+        if (readyPlayedThisSessionRef.current) return;
+
+        readyPlayedThisSessionRef.current = true;
+
+        const run = async () => {
+            try {
+                // Mute mic so the cue isn't sent to the agent
+                await room.localParticipant.setMicrophoneEnabled(false);
+
+                if (readyAudioRef.current) {
+                    readyAudioRef.current.currentTime = 0;
+                    await readyAudioRef.current.play().catch(() => {});
+                }
+
+                if (timeoutRef.current) window.clearTimeout(timeoutRef.current);
+                timeoutRef.current = window.setTimeout(async () => {
+                    if (room.state === ConnectionState.Connected) {
+                        await room.localParticipant.setMicrophoneEnabled(true);
+                    }
+                }, readyMuteMs);
+            } catch {
+                // Avoid leaving mic disabled if anything fails
+                try {
+                    await room.localParticipant.setMicrophoneEnabled(true);
+                } catch {}
+            }
+        };
+
+        void run();
+
+        return () => {
+            if (timeoutRef.current) window.clearTimeout(timeoutRef.current);
+        };
+    }, [agentState, room, readyMuteMs]);
+
+    // Play STOP on disconnect (room event)
+    useEffect(() => {
+        if (!room) return;
+
+        const onDisconnected = () => {
+            if (stopAudioRef.current) {
+                stopAudioRef.current.currentTime = 0;
+                void stopAudioRef.current.play().catch(() => {});
+            }
+            readyPlayedThisSessionRef.current = false;
+        };
+
+        room.on("disconnected", onDisconnected);
+        return () => {
+            room.off("disconnected", onDisconnected);
+        };
+    }, [room]);
+
+    return null;
+}
+
