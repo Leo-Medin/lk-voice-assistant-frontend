@@ -28,7 +28,6 @@ export default function Page() {
   const [transcriptions, setTranscriptions] = useState<TranscriptionEntry[]>([]);
   const lastActivityRef = useRef<number>(Date.now());
   const inactivityIntervalRef = useRef<number | null>(null);
-  const [noisyMode, setNoisyMode] = useState(false);
 
   useEffect(() => {
     if (transcriptions.length > 0) {
@@ -94,11 +93,10 @@ export default function Page() {
           inactivityIntervalRef={inactivityIntervalRef}
           timeoutMs={15000}
         />
-        <SimpleVoiceAssistant onStateChange={setAgentState} noisyMode={noisyMode} setNoisyMode={setNoisyMode}/>
+        <SimpleVoiceAssistant onStateChange={setAgentState}/>
         <ControlBar
           onConnectButtonClicked={onConnectButtonClicked}
           agentState={agentState}
-          noisyMode={noisyMode}
         />
         <RoomAudioRenderer />
         <NoAgentNotification state={agentState} />
@@ -108,7 +106,7 @@ export default function Page() {
   );
 }
 
-function SimpleVoiceAssistant({ onStateChange, noisyMode, setNoisyMode }: { onStateChange: (state: AgentState) => void, noisyMode: boolean, setNoisyMode: () => void }): void {
+function SimpleVoiceAssistant({ onStateChange }: { onStateChange: (state: AgentState) => void }): void {
   const { state, audioTrack } = useVoiceAssistant();
 
   useEffect(() => {
@@ -170,11 +168,7 @@ function SimpleVoiceAssistant({ onStateChange, noisyMode, setNoisyMode }: { onSt
               Autolife AI Assistant
           </div>
           <div style={{marginTop: '10px', textAlign: 'center', fontStyle: 'italic', color: 'grey'}}>
-              I speak English, Μιλάω ελληνικά, Я говорю по-русски, Je parle français, Ich spreche Deutsch.
-          </div>
-          <div style={{ marginLeft: 'auto', marginRight: 'auto', width: 'fit-content', marginTop: '10px' }}>
-              <input id='noisy-mode' type='checkbox' checked={noisyMode} onChange={() => setNoisyMode(!noisyMode)}/>
-              <label htmlFor="noisy-mode" style={{ paddingLeft: 10, color: 'gray' }}>Noisy Environment Mode</label>
+              I speak English, Μιλάω ελληνικά, Я говорю по-русски.
           </div>
           <BarVisualizer state={state} barCount={5} trackRef={audioTrack} className="agent-visualizer"
                          options={{minHeight: 24}} style={{ height: '200px' }}/>
@@ -186,8 +180,8 @@ function SimpleVoiceAssistant({ onStateChange, noisyMode, setNoisyMode }: { onSt
 function ControlBar(props: {
   onConnectButtonClicked: () => void;
   agentState: AgentState;
-  noisyMode: boolean;
 }) {
+    const [noisyMode, setNoisyMode] = useState(false);
   /**
    * Use Krisp background noise reduction when available.
    * Note: This is only available on Scale plan, see {@link https://livekit.io/pricing | LiveKit Pricing} for more details.
@@ -232,8 +226,12 @@ function ControlBar(props: {
             </motion.div>
           )}
       </AnimatePresence>
+        <div style={{ marginLeft: 'auto', marginRight: 'auto', width: 'fit-content', marginTop: '10px', marginBottom: '10px' }}>
+            <input id='noisy-mode' type='checkbox' checked={noisyMode} onChange={() => setNoisyMode(!noisyMode)}/>
+            <label htmlFor="noisy-mode" style={{ paddingLeft: 10, color: 'gray' }}>Noisy Environment Mode</label>
+        </div>
       {(props.agentState === "listening" || props.agentState === "speaking") &&
-        <PushToTalk noisyMode={props.noisyMode} />
+        <PushToTalk noisyMode={noisyMode} />
       }
     </div>
   );
