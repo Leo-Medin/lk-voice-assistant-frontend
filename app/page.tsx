@@ -19,6 +19,132 @@ import { useKrispNoiseFilter } from "@livekit/components-react/krisp";
 import Transcriptions, {TranscriptionEntry} from "./components/Transcriptions";
 import { useRoomContext } from "@livekit/components-react";
 import { ConnectionState } from "livekit-client";
+type NetHealth = "good" | "degraded" | "bad" | "unknown";
+
+function useNetworkHealth(pollMs: number = 1000) {
+    const room = useRoomContext();
+    const [health, setHealth] = useState<NetHealth>("unknown");
+    const [details, setDetails] = useState<{ rttMs?: number; jitterMs?: number; lossPct?: number }>({});
+
+    useEffect(() => {
+        if (!room) return;
+
+        let timer: number | null = null;
+        let lastPacketsReceived: number | null = null;
+        let lastPacketsLost: number | null = null;
+
+        const tick = async () => {
+            try {
+                // LiveKit internal: peer connection is reachable here in the browser SDK.
+                // Depending on LK version, the path may differ; this is the most common:
+                const pc: RTCPeerConnection | undefined =
+                    // @ts-expect-error - internal engine access (varies by LK version)
+                    room.engine?.pcManager?.subscriber?.pc ??
+                    // fallback: if your LK version names it differently, keep publisher as last resort
+                    // @ts-expect-error - internal engine access
+                    room.engine?.pcManager?.publisher?.pc ??
+                    undefined;
+
+                if (!pc) {
+                    setHealth("unknown");
+                    return;
+                }
+
+                const stats = await pc.getStats();
+
+                let rttSec: number | undefined;
+                let jitterSec: number | undefined;
+                let packetsReceived: number | undefined;
+                let packetsLost: number | undefined;
+
+                stats.forEach((report) => {
+                    // Inbound RTP audio is the most relevant for "agent voice is chopped"
+                    if (report.type === "inbound-rtp" && report.kind === "audio") {
+                        const r = report;
+                        jitterSec = typeof r.jitter === "number" ? r.jitter : jitterSec;
+                        packetsReceived = typeof r.packetsReceived === "number" ? r.packetsReceived : packetsReceived;
+                        packetsLost = typeof r.packetsLost === "number" ? r.packetsLost : packetsLost;
+                    }
+
+                    // Candidate pair gives RTT
+                    if (report.type === "candidate-pair" && report.state === "succeeded") {
+                        const r = report;
+                        rttSec = typeof r.currentRoundTripTime === "number" ? r.currentRoundTripTime : rttSec;
+                    }
+                });
+
+                const rttMs = rttSec != null ? Math.round(rttSec * 1000) : undefined;
+                const jitterMs = jitterSec != null ? Math.round(jitterSec * 1000) : undefined;
+
+                let lossPct: number | undefined;
+
+                // Prefer delta-based loss (more stable than lifetime %)
+                if (
+                    packetsReceived != null &&
+                    packetsLost != null &&
+                    lastPacketsReceived != null &&
+                    lastPacketsLost != null
+                ) {
+                    const dRecv = packetsReceived - lastPacketsReceived;
+                    const dLost = packetsLost - lastPacketsLost;
+                    const denom = dRecv + dLost;
+                    if (denom > 0) {
+                        lossPct = Math.max(0, Math.min(100, (dLost / denom) * 100));
+                    }
+                }
+
+                lastPacketsReceived = packetsReceived ?? lastPacketsReceived;
+                lastPacketsLost = packetsLost ?? lastPacketsLost;
+
+                // Classify (tune thresholds as needed)
+                // Voice starts degrading noticeably around jitter > ~30ms or loss > ~3-5%
+                let next: NetHealth = "good";
+
+                if (lossPct != null && lossPct > 8) next = "bad";
+                else if (jitterMs != null && jitterMs > 80) next = "bad";
+                else if (rttMs != null && rttMs > 700) next = "bad";
+                else if (lossPct != null && lossPct > 3) next = "degraded";
+                else if (jitterMs != null && jitterMs > 30) next = "degraded";
+                else if (rttMs != null && rttMs > 350) next = "degraded";
+
+                setDetails({ rttMs, jitterMs, lossPct });
+                setHealth(next);
+            } catch {
+                setHealth("unknown");
+            }
+        };
+
+        timer = window.setInterval(() => void tick(), pollMs);
+        void tick();
+
+        return () => {
+            if (timer) window.clearInterval(timer);
+        };
+    }, [room, pollMs]);
+
+    return { health, details };
+}
+
+function useEventLoopLag(sampleMs = 500) {
+    const [lagMs, setLagMs] = useState(0);
+
+    useEffect(() => {
+        let t: number | null = null;
+        let last = performance.now();
+
+        t = window.setInterval(() => {
+            const now = performance.now();
+            const expected = last + sampleMs;
+            const lag = Math.max(0, now - expected);
+            setLagMs(Math.round(lag));
+            last = now;
+        }, sampleMs);
+
+        return () => { if (t) window.clearInterval(t); };
+    }, [sampleMs]);
+
+    return lagMs;
+}
 
 export default function Page() {
   const [connectionDetails, updateConnectionDetails] = useState<
@@ -52,7 +178,6 @@ export default function Page() {
     // own participant name, and possibly to choose from existing rooms to join.
 
     lastActivityRef.current = Date.now();
-
     setTranscriptions([]); // Clear old transcriptions
 
     const url = new URL(
@@ -133,7 +258,7 @@ function SimpleVoiceAssistant({ onStateChange }: { onStateChange: (state: AgentS
   
     console.log("Valid mediaStreamTrack detected. Proceeding...");
   
-    const audioContext = new AudioContext();
+    // const audioContext = new AudioContext();
     const mediaStream = new MediaStream();
     mediaStream.addTrack(mediaStreamTrack);
   
@@ -159,11 +284,11 @@ function SimpleVoiceAssistant({ onStateChange }: { onStateChange: (state: AgentS
         cancelAnimationFrame(animationFrameId); // ✅ Cancel any pending frame
       }
   
-      audioContext.close(); // ✅ Close audio processing
+      // audioContext.close(); // ✅ Close audio processing
     };
   }, [audioTrack]);
 
-  return (
+    return (
       <div className="max-w-[90vw] mx-auto">
           <div style={{marginTop: '10px', textAlign: 'center'}}>
               Autolife AI Assistant
@@ -183,7 +308,14 @@ function ControlBar(props: {
   agentState: AgentState;
 }) {
     const [noisyMode, setNoisyMode] = useState(false);
-  /**
+    const { health, details: healthDetails } = useNetworkHealth(250);
+    const lagMs = useEventLoopLag(500);
+
+    // useEffect(() => {
+    //     console.log("health changed:", health, healthDetails);
+    // }, [health, healthDetails.rttMs, healthDetails.jitterMs, healthDetails.lossPct]);
+
+    /**
    * Use Krisp background noise reduction when available.
    * Note: This is only available on Scale plan, see {@link https://livekit.io/pricing | LiveKit Pricing} for more details.
    */
@@ -234,6 +366,22 @@ function ControlBar(props: {
       {(props.agentState === "listening" || props.agentState === "speaking") &&
         <PushToTalk noisyMode={noisyMode} />
       }
+        {props.agentState !== "disconnected" && props.agentState !== "connecting" &&
+            <>
+            {/*{health !== "good" && health !== "unknown" && (*/}
+            <div style={{ textAlign: "center", color: "orange", marginTop: 6, fontSize: 12 }}>
+                Network status is {health}. {healthDetails.lossPct != null ? `Loss ${healthDetails.lossPct.toFixed(1)}%` : ""}
+                {healthDetails.jitterMs != null ? `, Jitter ${healthDetails.jitterMs}ms` : ""}
+                {healthDetails.rttMs != null ? `, RTT ${healthDetails.rttMs}ms` : ""}
+            </div>
+            {/*)}*/}
+            {/*{lagMs > 80 && (*/}
+                <div style={{ textAlign: "center", color: "orange", marginTop: 6, fontSize: 12 }}>
+                    {lagMs > 80? 'Device busy (event loop lag {lagMs}ms). Audio may stutter.': 'Device health is ok, no lag'}
+                </div>
+            {/*)}*/}
+            </>
+        }
     </div>
   );
 }
