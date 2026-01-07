@@ -15,7 +15,7 @@ import { MediaDeviceFailure } from "livekit-client";
 import type { ConnectionDetails } from "./api/connection-details/route";
 import { NoAgentNotification } from "@/components/NoAgentNotification";
 import { CloseIcon } from "@/components/CloseIcon";
-import { useKrispNoiseFilter } from "@livekit/components-react/krisp";
+// import { useKrispNoiseFilter } from "@livekit/components-react/krisp";
 import Transcriptions, {TranscriptionEntry} from "./components/Transcriptions";
 import { useRoomContext } from "@livekit/components-react";
 import { ConnectionState } from "livekit-client";
@@ -319,10 +319,10 @@ function ControlBar(props: {
    * Use Krisp background noise reduction when available.
    * Note: This is only available on Scale plan, see {@link https://livekit.io/pricing | LiveKit Pricing} for more details.
    */
-  const krisp = useKrispNoiseFilter();
-  useEffect(() => {
-    krisp.setNoiseFilterEnabled(true);
-  }, []);
+  // const krisp = useKrispNoiseFilter();
+  // useEffect(() => {
+  //   krisp.setNoiseFilterEnabled(true);
+  // }, []);
 
   // console.log("Current agentState:", props.agentState);
 
