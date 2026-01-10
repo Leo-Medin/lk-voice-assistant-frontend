@@ -176,6 +176,17 @@ export default function Page() {
     // In real-world application, you would likely allow the user to specify their
     // own participant name, and possibly to choose from existing rooms to join.
 
+    try {
+      // Explicitly request microphone access before initiating connection
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      // Stop tracks immediately as LiveKitRoom will manage its own tracks
+      stream.getTracks().forEach(track => track.stop());
+    } catch (err) {
+      console.error("Microphone access denied or error:", err);
+      onDeviceFailure(err instanceof Error ? err : undefined);
+      return;
+    }
+
     lastActivityRef.current = Date.now();
     setTranscriptions([]); // Clear old transcriptions
 
