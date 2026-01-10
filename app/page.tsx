@@ -20,6 +20,56 @@ import { useRoomContext } from "@livekit/components-react";
 import { ConnectionState } from "livekit-client";
 type NetHealth = "good" | "degraded" | "bad" | "unknown";
 
+interface Citation {
+    source: string;
+    text?: string;
+}
+
+function CitationDisplay() {
+    const room = useRoomContext();
+    const [citations, setCitations] = useState<Citation[]>([]);
+
+    useEffect(() => {
+        const handleData = (payload: Uint8Array) => {
+            const decoder = new TextDecoder();
+            const str = decoder.decode(payload);
+            try {
+                const data = JSON.parse(str);
+                if (data.type === "citations") {
+                    console.log("Received citations:", data.citations);
+                    setCitations(data.citations);
+                }
+            } catch (e) {
+                console.error("Failed to parse data message", e);
+            }
+        };
+
+        room.on(RoomEvent.DataReceived, handleData);
+
+        return () => {
+            room.off(RoomEvent.DataReceived, handleData);
+        };
+    }, [room]);
+
+    if (citations.length === 0) return null;
+
+    return (
+        <div className="citations-container max-w-[90vw] mx-auto mb-4 p-3">
+            <ul className="flex flex-wrap gap-2 text-xs">
+                {citations.map((c, i) => (
+                    <li
+                        key={i}
+                        title={c.text}
+                        className="bg-gray-700 px-2 py-1 rounded text-gray-200 cursor-help"
+                    >
+                        {c.source}
+                    </li>
+                ))}
+            </ul>
+        </div>
+    );
+}
+
 function useNetworkHealth(pollMs: number = 1000) {
     const room = useRoomContext();
     const [health, setHealth] = useState<NetHealth>("unknown");
@@ -183,7 +233,7 @@ export default function Page() {
       stream.getTracks().forEach(track => track.stop());
     } catch (err) {
       console.error("Microphone access denied or error:", err);
-      onDeviceFailure(err instanceof Error ? err : undefined);
+      onDeviceFailure(err as MediaDeviceFailure);
       return;
     }
 
@@ -368,10 +418,9 @@ function ControlBar(props: {
                     Network status is {health}. {healthDetails.lossPct != null ? `Loss ${healthDetails.lossPct.toFixed(1)}%` : ""}
                     {healthDetails.jitterMs != null ? `, Jitter ${healthDetails.jitterMs}ms` : ""}
                     {healthDetails.rttMs != null ? `, RTT ${healthDetails.rttMs}ms` : ""}
+                    {lagMs > 80? '. Device busy (event loop lag {lagMs}ms). Audio may stutter.': '. Device performance OK'}
                 </div>
-                <div style={{ textAlign: "center", color: "orange", marginTop: 6, fontSize: 12 }}>
-                    {lagMs > 80? 'Device busy (event loop lag {lagMs}ms). Audio may stutter.': 'Device performance OK'}
-                </div>
+                <CitationDisplay />
             </>
         }
     </div>
