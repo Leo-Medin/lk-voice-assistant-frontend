@@ -10,12 +10,11 @@ import {
   AgentState,
   DisconnectButton,
 } from "@livekit/components-react";
-import { useCallback, useEffect, useRef, useState } from "react";
-import { MediaDeviceFailure } from "livekit-client";
+import React, { useCallback, useEffect, useRef, useState } from "react";
+import {MediaDeviceFailure, RoomEvent} from "livekit-client";
 import type { ConnectionDetails } from "./api/connection-details/route";
 import { NoAgentNotification } from "@/components/NoAgentNotification";
 import { CloseIcon } from "@/components/CloseIcon";
-// import { useKrispNoiseFilter } from "@livekit/components-react/krisp";
 import Transcriptions, {TranscriptionEntry} from "./components/Transcriptions";
 import { useRoomContext } from "@livekit/components-react";
 import { ConnectionState } from "livekit-client";
@@ -217,6 +216,7 @@ export default function Page() {
           lastActivityRef={lastActivityRef}
           inactivityIntervalRef={inactivityIntervalRef}
           timeoutMs={15000}
+          setTranscriptions={setTranscriptions}
         />
         <SimpleVoiceAssistant onStateChange={setAgentState}/>
         <ControlBar
@@ -226,7 +226,7 @@ export default function Page() {
         <RoomAudioRenderer />
         <NoAgentNotification state={agentState} />
         <Transcriptions transcriptions={transcriptions} setTranscriptions={setTranscriptions}/>
-        <SessionCues agentState={agentState} />
+        <SessionCues agentState={agentState} setTranscriptions={setTranscriptions} />
       </LiveKitRoom>
     </main>
   );
@@ -311,21 +311,6 @@ function ControlBar(props: {
     const { health, details: healthDetails } = useNetworkHealth(250);
     const lagMs = useEventLoopLag(500);
 
-    // useEffect(() => {
-    //     console.log("health changed:", health, healthDetails);
-    // }, [health, healthDetails.rttMs, healthDetails.jitterMs, healthDetails.lossPct]);
-
-    /**
-   * Use Krisp background noise reduction when available.
-   * Note: This is only available on Scale plan, see {@link https://livekit.io/pricing | LiveKit Pricing} for more details.
-   */
-  // const krisp = useKrispNoiseFilter();
-  // useEffect(() => {
-  //   krisp.setNoiseFilterEnabled(true);
-  // }, []);
-
-  // console.log("Current agentState:", props.agentState);
-
   return (
     <div className="relative" style={{ display: "flex", flexDirection: "column", marginBottom: '15px', minHeight: 100 }}>
       <AnimatePresence>
@@ -368,18 +353,14 @@ function ControlBar(props: {
       }
         {props.agentState !== "disconnected" && props.agentState !== "connecting" &&
             <>
-            {/*{health !== "good" && health !== "unknown" && (*/}
-            <div style={{ textAlign: "center", color: "orange", marginTop: 6, fontSize: 12 }}>
-                Network status is {health}. {healthDetails.lossPct != null ? `Loss ${healthDetails.lossPct.toFixed(1)}%` : ""}
-                {healthDetails.jitterMs != null ? `, Jitter ${healthDetails.jitterMs}ms` : ""}
-                {healthDetails.rttMs != null ? `, RTT ${healthDetails.rttMs}ms` : ""}
-            </div>
-            {/*)}*/}
-            {/*{lagMs > 80 && (*/}
                 <div style={{ textAlign: "center", color: "orange", marginTop: 6, fontSize: 12 }}>
-                    {lagMs > 80? 'Device busy (event loop lag {lagMs}ms). Audio may stutter.': 'Device health is ok, no lag'}
+                    Network status is {health}. {healthDetails.lossPct != null ? `Loss ${healthDetails.lossPct.toFixed(1)}%` : ""}
+                    {healthDetails.jitterMs != null ? `, Jitter ${healthDetails.jitterMs}ms` : ""}
+                    {healthDetails.rttMs != null ? `, RTT ${healthDetails.rttMs}ms` : ""}
                 </div>
-            {/*)}*/}
+                <div style={{ textAlign: "center", color: "orange", marginTop: 6, fontSize: 12 }}>
+                    {lagMs > 80? 'Device busy (event loop lag {lagMs}ms). Audio may stutter.': 'Device performance OK'}
+                </div>
             </>
         }
     </div>
@@ -398,16 +379,24 @@ function InactivityAutoDisconnect({
                                       lastActivityRef,
                                       inactivityIntervalRef,
                                       timeoutMs = 15000,
+                                      setTranscriptions,
                                   }: {
     agentState: AgentState;
     lastActivityRef: React.MutableRefObject<number>;
     inactivityIntervalRef: React.MutableRefObject<number | null>;
     timeoutMs?: number;
+    setTranscriptions: React.Dispatch<React.SetStateAction<TranscriptionEntry[]>>;
 }) {
     const room = useRoomContext();
 
     useEffect(() => {
-        if (!room) return;
+        if (!room || agentState === "disconnected") {
+            if (inactivityIntervalRef.current) {
+                window.clearInterval(inactivityIntervalRef.current);
+                inactivityIntervalRef.current = null;
+            }
+            return;
+        }
 
         // reset and start interval when connected
         if (inactivityIntervalRef.current) {
@@ -420,6 +409,22 @@ function InactivityAutoDisconnect({
 
             // Do not disconnect while agent is actively speaking
             if (idleMs > timeoutMs && agentState !== "speaking") {
+                // Clear interval immediately to prevent multiple triggers
+                if (inactivityIntervalRef.current) {
+                    window.clearInterval(inactivityIntervalRef.current);
+                    inactivityIntervalRef.current = null;
+                }
+
+                setTranscriptions((prev) => [
+                    ...prev,
+                    {
+                        speaker: "System",
+                        text: "Disconnected due to inactivity.",
+                        isFinal: true,
+                        segmentId: `system-inactivity-${Date.now()}`,
+                        ts: Date.now(),
+                    },
+                ]);
                 room.disconnect(true);
             }
         }, 1000);
@@ -430,7 +435,7 @@ function InactivityAutoDisconnect({
                 inactivityIntervalRef.current = null;
             }
         };
-    }, [room, agentState, timeoutMs]);
+    }, [room, agentState, timeoutMs, setTranscriptions]);
 
     return null;
 }
@@ -479,11 +484,13 @@ function SessionCues({
                          readyUrl = "/sounds/ready.mp3",
                          stopUrl = "/sounds/stop.mp3",
                          readyMuteMs = 500,
+                         setTranscriptions
                      }: {
     agentState: AgentState;
     readyUrl?: string;
     stopUrl?: string;
     readyMuteMs?: number;
+    setTranscriptions: React.Dispatch<React.SetStateAction<TranscriptionEntry[]>>;
 }) {
     const room = useRoomContext();
 
@@ -495,7 +502,16 @@ function SessionCues({
 
     // Used for mic re-enable timing
     const timeoutRef = useRef<number | null>(null);
+    const hasProcessedTimeoutRef = useRef(false);
 
+    useEffect(() => {
+        if (agentState === "disconnected") {
+            readyPlayedThisSessionRef.current = false;
+            hasProcessedTimeoutRef.current = false;
+        }
+    }, [agentState]);
+
+    // Play READY only on first listening of the session (with brief mic mute)
     useEffect(() => {
         if (!readyAudioRef.current) {
             const a = new Audio(readyUrl);
@@ -568,8 +584,25 @@ function SessionCues({
             }
             readyPlayedThisSessionRef.current = false;
         };
-
         room.on("disconnected", onDisconnected);
+        room.on(RoomEvent.DataReceived, (payload) => {
+            const data = JSON.parse(new TextDecoder().decode(payload));
+            if (data.type === 'session_timeout' && !hasProcessedTimeoutRef.current) {
+                hasProcessedTimeoutRef.current = true;
+                console.log('session_timeout! disconnecting');
+                setTranscriptions((prev) => [
+                    ...prev,
+                    {
+                        speaker: "System",
+                        text: "Disconnected due to session time limit.",
+                        isFinal: true,
+                        segmentId: `system-${Date.now()}`,
+                        ts: Date.now(),
+                    },
+                ]);
+                room.disconnect();
+            }
+        });
         return () => {
             room.off("disconnected", onDisconnected);
         };
@@ -577,4 +610,3 @@ function SessionCues({
 
     return null;
 }
-
