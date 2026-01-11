@@ -7,6 +7,13 @@
   --lk-control-bar-height: unset;
 }
 
+html, body {
+  background-color: var(--lk-bg, #111);
+  color: var(--lk-fg, white);
+  height: 100%;
+  margin: 0;
+}
+
 .agent-visualizer > .lk-audio-bar {
   width: 72px;
 }

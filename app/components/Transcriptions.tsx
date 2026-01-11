@@ -113,18 +113,44 @@ const Transcriptions = ({ transcriptions, setTranscriptions }: { transcriptions:
     }
   }, [transcriptions]); // Runs every time transcriptions change
 
-  return (
-    <div ref={scrollRef} className="transcriptions p-4 bg-gray-100 shadow-md rounded-md h-48 overflow-y-auto">
-      <h3 className="text-lg font-bold mb-2" style={{ color: 'lightgrey' }}>Live Transcriptions</h3>
-        {[...transcriptions]
-            .sort((a, b) => a.ts - b.ts)
-            .map((entry, index) => (
-                <p key={entry.segmentId ?? index} className={entry.speaker === "You" ? "text-blue-600" : "text-black"}>
-                    <strong>{entry.speaker}:</strong> {entry.text}
-                </p>
-        ))}
-    </div>
-  );
-};
+      return (
+        <div ref={scrollRef} className="transcriptions p-4 bg-transparent h-64 overflow-y-auto">
+          <div className="max-w-[1200px] mx-auto flex flex-col gap-2">
+            {[...transcriptions]
+                .sort((a, b) => a.ts - b.ts)
+                .map((entry, index) => {
+                    const isLocal = entry.speaker === "You";
+                    const isSystem = entry.speaker === "System";
 
-export default Transcriptions;
+                    if (isSystem) {
+                        return (
+                            <div key={entry.segmentId ?? index} className="self-center my-2">
+                                <span className="bg-gray-800 text-gray-400 text-[10px] px-2 py-1 rounded-full uppercase tracking-wider">
+                                    {entry.text}
+                                </span>
+                            </div>
+                        );
+                    }
+
+                    return (
+                        <div
+                            key={entry.segmentId ?? index}
+                            className={`max-w-[80%] min-w-[30%] p-3 rounded-2xl text-sm shadow-sm ${
+                                isLocal
+                                    ? "bg-green-700 text-white self-end rounded-tr-none"
+                                    : "bg-gray-800 text-gray-100 self-start rounded-tl-none"
+                            }`}
+                        >
+                            <div className={`text-[10px] mb-1 opacity-60 font-bold uppercase`}>
+                                {entry.speaker}
+                            </div>
+                            <div>{entry.text}</div>
+                        </div>
+                    );
+                })}
+          </div>
+        </div>
+      );
+    };
+
+    export default Transcriptions;
