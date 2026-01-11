@@ -8,10 +8,11 @@
 }
 
 html, body {
-  background-color: var(--lk-bg, #111);
-  color: var(--lk-fg, white);
-  height: 100%;
-  margin: 0;
+    background-color: var(--lk-bg, #111);
+    color: var(--lk-fg, white);
+    height: 100%;
+    margin: 0;
+    overflow: hidden;
 }
 
 .agent-visualizer > .lk-audio-bar {

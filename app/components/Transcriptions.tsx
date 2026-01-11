@@ -114,7 +114,7 @@ const Transcriptions = ({ transcriptions, setTranscriptions }: { transcriptions:
   }, [transcriptions]); // Runs every time transcriptions change
 
       return (
-        <div ref={scrollRef} className="transcriptions p-4 bg-transparent h-64 overflow-y-auto">
+        <div ref={scrollRef} className="transcriptions p-4 bg-transparent flex-1 h-full overflow-y-auto min-h-0">
           <div className="max-w-[1200px] mx-auto flex flex-col gap-2">
             {[...transcriptions]
                 .sort((a, b) => a.ts - b.ts)

@@ -80,7 +80,7 @@ function StatusIndicator({ state }: { state: AgentState }) {
   ];
 
   return (
-    <div className="flex flex-row gap-2 justify-center items-center my-4 w-full max-w-[375px] mx-auto">
+    <div className="flex flex-row gap-2 justify-center items-center my-2 w-full max-w-[375px] mx-auto">
       {statuses.map((status) => {
         const isActive = 
           (status.id === "disconnected" && state === "disconnected") ||
@@ -95,7 +95,7 @@ function StatusIndicator({ state }: { state: AgentState }) {
             key={status.id}
             className={`
               flex flex-col items-center justify-center 
-              w-16 h-16 rounded-xl border transition-all duration-300
+              w-14 h-14 sm:w-16 sm:h-16 rounded-xl border transition-all duration-300
               ${isActive 
                 ? "bg-orange-950/40 text-orange-500 border-orange-500/50 shadow-[0_0_15px_rgba(249,115,22,0.2)]" 
                 : "bg-gray-900/50 text-gray-600 border-gray-800"}
@@ -295,7 +295,7 @@ export default function Page() {
   return (
     <main
       data-lk-theme="default"
-      className="h-full content-center bg-[var(--lk-bg)]"
+      className="h-screen flex flex-col bg-[var(--lk-bg)] overflow-hidden"
     >
       <LiveKitRoom
         token={connectionDetails?.participantToken}
@@ -312,7 +312,7 @@ export default function Page() {
         onDisconnected={() => {
           updateConnectionDetails(undefined);
         }}
-        className="grid-rows-[2fr_1fr] items-center"
+        className="flex flex-col h-full overflow-hidden"
       >
         <InactivityAutoDisconnect
           agentState={agentState}
@@ -392,17 +392,17 @@ function SimpleVoiceAssistant({ onStateChange }: { onStateChange: (state: AgentS
   }, [audioTrack]);
 
     return (
-      <div className="max-w-[90vw] mx-auto">
-          <div style={{marginTop: '10px', textAlign: 'center'}}>
+      <div className="max-w-[90vw] mx-auto flex flex-col shrink-0">
+          <div style={{marginTop: '8px', textAlign: 'center', fontSize: '14px'}}>
               Autolife AI Assistant
           </div>
-          <div style={{marginTop: '10px', textAlign: 'center', fontStyle: 'italic', color: 'grey'}}>
+          <div style={{marginTop: '4px', textAlign: 'center', fontStyle: 'italic', color: 'grey', fontSize: '12px'}}>
               I speak English, Μιλάω ελληνικά, Я говорю по-русски.
           </div>
           <BarVisualizer state={state} barCount={5} trackRef={audioTrack} className="agent-visualizer"
-                         options={{minHeight: 24}} style={{ height: '200px' }}/>
+                         options={{minHeight: 24}} style={{ height: '120px' }}/>
           <StatusIndicator state={state} />
-          <div style={{textAlign: "center", color: "gray", marginBottom: '10px' }}>{state}</div>
+          <div style={{textAlign: "center", color: "gray", marginBottom: '4px', fontSize: '12px' }}>{state}</div>
       </div>
   );
 }
@@ -416,7 +416,7 @@ function ControlBar(props: {
     const lagMs = useEventLoopLag(500);
 
   return (
-    <div className="relative" style={{ display: "flex", flexDirection: "column", marginBottom: '15px', minHeight: 100 }}>
+    <div className="relative shrink-0" style={{ display: "flex", flexDirection: "column", marginBottom: '8px', minHeight: 80 }}>
       <AnimatePresence>
         {props.agentState === "disconnected" && (
           <motion.button
