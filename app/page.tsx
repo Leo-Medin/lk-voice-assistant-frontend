@@ -18,6 +18,7 @@ import { CloseIcon } from "@/components/CloseIcon";
 import Transcriptions, {TranscriptionEntry} from "./components/Transcriptions";
 import { useRoomContext } from "@livekit/components-react";
 import { ConnectionState } from "livekit-client";
+import { Mic, Ear, Loader2, PowerOff } from "lucide-react";
 type NetHealth = "good" | "degraded" | "bad" | "unknown";
 
 interface Citation {
@@ -68,6 +69,47 @@ function CitationDisplay() {
             </ul>
         </div>
     );
+}
+
+function StatusIndicator({ state }: { state: AgentState }) {
+  const statuses = [
+    { id: "disconnected", icon: PowerOff, label: "OFF" },
+    { id: "connecting", icon: Loader2, label: "Wait" },
+    { id: "listening", icon: Ear, label: "Ear" },
+    { id: "speaking", icon: Mic, label: "Talk" },
+  ];
+
+  return (
+    <div className="flex flex-row gap-2 justify-center items-center my-4 w-full max-w-[375px] mx-auto">
+      {statuses.map((status) => {
+        const isActive = 
+          (status.id === "disconnected" && state === "disconnected") ||
+          (status.id === "connecting" && (state === "connecting" || state === "initializing")) ||
+          (status.id === "listening" && state === "listening") ||
+          (status.id === "speaking" && state === "speaking");
+
+        const Icon = status.icon;
+
+        return (
+          <div
+            key={status.id}
+            className={`
+              flex flex-col items-center justify-center 
+              w-16 h-16 rounded-xl border transition-all duration-300
+              ${isActive 
+                ? "bg-orange-950/40 text-orange-500 border-orange-500/50 shadow-[0_0_15px_rgba(249,115,22,0.2)]" 
+                : "bg-gray-900/50 text-gray-600 border-gray-800"}
+            `}
+          >
+            <Icon size={24} className={status.id === "connecting" && isActive ? "animate-spin" : ""} />
+            <span className="text-[10px] mt-1 uppercase font-bold tracking-tighter opacity-80">
+              {status.label}
+            </span>
+          </div>
+        );
+      })}
+    </div>
+  );
 }
 
 function useNetworkHealth(pollMs: number = 1000) {
@@ -359,6 +401,7 @@ function SimpleVoiceAssistant({ onStateChange }: { onStateChange: (state: AgentS
           </div>
           <BarVisualizer state={state} barCount={5} trackRef={audioTrack} className="agent-visualizer"
                          options={{minHeight: 24}} style={{ height: '200px' }}/>
+          <StatusIndicator state={state} />
           <div style={{textAlign: "center", color: "gray", marginBottom: '10px' }}>{state}</div>
       </div>
   );
