@@ -414,13 +414,46 @@ function ControlBar(props: {
       }
         {props.agentState !== "disconnected" && props.agentState !== "connecting" &&
             <>
-                <div style={{ textAlign: "center", color: "orange", marginTop: 6, fontSize: 12 }}>
-                    Network status is {health}. {healthDetails.lossPct != null ? `Loss ${healthDetails.lossPct.toFixed(1)}%` : ""}
-                    {healthDetails.jitterMs != null ? `, Jitter ${healthDetails.jitterMs}ms` : ""}
-                    {healthDetails.rttMs != null ? `, RTT ${healthDetails.rttMs}ms` : ""}
-                    {lagMs > 80? '. Device busy (event loop lag {lagMs}ms). Audio may stutter.': '. Device performance OK'}
-                </div>
-                <CitationDisplay />
+                <div className="text-center text-amber-200/60 mt-2 text-[10px] uppercase tracking-widest font-mono flex flex-wrap justify-center gap-x-2 gap-y-1">
+                        <span className="whitespace-nowrap">
+                            Network: <span className={`inline-block w-[10ch] text-left ${health === "good" ? "text-green-400" : "text-orange-400"}`}>{health}</span>
+                        </span>
+                        {healthDetails.lossPct != null && (
+                            <span className="whitespace-nowrap">
+                                {" • Loss "}
+                                <span className="inline-block w-[4ch] text-right">
+                                    {healthDetails.lossPct.toFixed(1)}
+                                </span>
+                                {"%"}
+                            </span>
+                        )}
+                        {healthDetails.jitterMs != null && (
+                            <span className="whitespace-nowrap">
+                                {" • Jitter "}
+                                <span className="inline-block w-[3ch] text-right">
+                                    {healthDetails.jitterMs.toString().padStart(3, '0')}
+                                </span>
+                                {" ms"}
+                            </span>
+                        )}
+                        {healthDetails.rttMs != null && (
+                            <span className="whitespace-nowrap">
+                                {" • RTT "}
+                                <span className="inline-block w-[3ch] text-right">
+                                    {healthDetails.rttMs.toString()}
+                                </span>
+                                {" ms"}
+                            </span>
+                        )}
+                        <span className="whitespace-nowrap">
+                            {lagMs > 80 ? (
+                                <span className="text-red-400"> • Device Busy ({lagMs.toString().padStart(3, ' ')}ms)</span>
+                            ) : (
+                                <span className="opacity-70"> • Performance OK</span>
+                            )}
+                        </span>
+                    </div>
+                    <CitationDisplay />
             </>
         }
     </div>
