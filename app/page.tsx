@@ -246,7 +246,12 @@ export default function Page() {
   const lastActivityRef = useRef<number>(Date.now());
   const inactivityIntervalRef = useRef<number | null>(null);
 
-  useEffect(() => {
+    useEffect(() => {
+        // Fire-and-forget warmup (don’t block UI)
+        fetch("/api/warmup", { method: "GET", cache: "no-store" }).catch(() => {});
+    }, []);
+
+    useEffect(() => {
     if (transcriptions.length > 0) {
         lastActivityRef.current = Date.now();
     }
