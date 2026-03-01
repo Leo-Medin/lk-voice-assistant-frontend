@@ -1,9 +1,9 @@
 "use client";
 
-import React, { useMemo, useState } from "react";
+import React, { Suspense, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 
-export default function LoginPage() {
+function LoginInner() {
     const router = useRouter();
     const sp = useSearchParams();
     const nextPath = useMemo(() => sp.get("next") ?? "/", [sp]);
@@ -11,6 +11,24 @@ export default function LoginPage() {
     const [password, setPassword] = useState("");
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
+
+    useEffect(() => {
+        // Warm up serverless runtime ASAP so the later /api/auth POST is less likely to feel slow.
+        // Fire-and-forget; never block UI.
+        const controller = new AbortController();
+
+        fetch("/api/warmup", {
+            method: "GET",
+            cache: "no-store",
+            signal: controller.signal,
+            // keepalive helps the request still complete during quick navigations (best-effort).
+            keepalive: true,
+        }).catch(() => {
+            // ignore warmup failures
+        });
+
+        return () => controller.abort();
+    }, []);
 
     const onSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -39,7 +57,10 @@ export default function LoginPage() {
 
     return (
         <main className="min-h-screen flex items-center justify-center bg-black text-white px-6">
-            <form onSubmit={onSubmit} className="w-full max-w-sm space-y-4 border border-white/10 rounded-xl p-6 bg-white/5">
+            <form
+                onSubmit={onSubmit}
+                className="w-full max-w-sm space-y-4 border border-white/10 rounded-xl p-6 bg-white/5"
+            >
                 <h1 className="text-xl font-semibold">Enter password</h1>
 
                 <label className="block text-sm text-white/70">
@@ -68,5 +89,13 @@ export default function LoginPage() {
                 </p>
             </form>
         </main>
+    );
+}
+
+export default function LoginPage() {
+    return (
+        <Suspense fallback={null}>
+            <LoginInner />
+        </Suspense>
     );
 }
