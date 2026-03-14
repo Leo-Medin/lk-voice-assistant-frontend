@@ -5,6 +5,8 @@ const PUBLIC_PATHS = new Set([
     "/login",
     "/api/auth",
     "/api/warmup",
+    "/widget",
+    "/api/connection-details",
 ]);
 
 function isPublicPath(pathname: string) {
@@ -13,6 +15,7 @@ function isPublicPath(pathname: string) {
     if (pathname.startsWith("/favicon")) return true;
     if (pathname.startsWith("/robots.txt")) return true;
     if (pathname.startsWith("/sitemap")) return true;
+    if (pathname.startsWith("/widget")) return true;
     return false;
 }
 
