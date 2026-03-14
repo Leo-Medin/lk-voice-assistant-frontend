@@ -66,10 +66,11 @@ function LoginInner() {
                 <label className="block text-sm text-white/70">
                     Password
                     <input
-                        className="mt-2 w-full rounded-md bg-black/40 border border-white/15 px-3 py-2 outline-none"
+                        className="mt-2 w-full rounded-md bg-black/40 border border-white/15 px-3 py-2 outline-none text-white caret-white focus:border-white/40"
                         type="password"
                         value={password}
                         onChange={(e) => setPassword(e.target.value)}
+                        placeholder="Enter password"
                         autoFocus
                     />
                 </label>
