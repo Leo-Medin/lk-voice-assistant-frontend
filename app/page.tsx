@@ -18,7 +18,7 @@ import { CloseIcon } from "@/components/CloseIcon";
 import Transcriptions, {TranscriptionEntry} from "./components/Transcriptions";
 import { useRoomContext } from "@livekit/components-react";
 import { ConnectionState } from "livekit-client";
-import { Mic, Ear, Loader2, PowerOff } from "lucide-react";
+import { Mic, Ear, Loader2, PowerOff, MessageSquare } from "lucide-react";
 type NetHealth = "good" | "degraded" | "bad" | "unknown";
 
 interface Citation {
@@ -71,11 +71,11 @@ function CitationDisplay() {
     );
 }
 
-function StatusIndicator({ state }: { state: AgentState }) {
+function StatusIndicator({ state, sessionMode }: { state: AgentState; sessionMode: "voice" | "text" | null }) {
   const statuses = [
     { id: "disconnected", icon: PowerOff, label: "OFF" },
     { id: "connecting", icon: Loader2, label: "Wait" },
-    { id: "listening", icon: Ear, label: "Ear" },
+    { id: "listening", icon: sessionMode === "text" ? MessageSquare : Ear, label: sessionMode === "text" ? "Ready" : "Ear" },
     { id: "speaking", icon: Mic, label: "Talk" },
   ];
 
@@ -242,6 +242,7 @@ export default function Page() {
     ConnectionDetails | undefined
   >(undefined);
   const [agentState, setAgentState] = useState<AgentState>("disconnected");
+  const [sessionMode, setSessionMode] = useState<"voice" | "text" | null>(null);
   const [transcriptions, setTranscriptions] = useState<TranscriptionEntry[]>([]);
   const lastActivityRef = useRef<number>(Date.now());
   const inactivityIntervalRef = useRef<number | null>(null);
@@ -263,29 +264,21 @@ export default function Page() {
     }
   }, [agentState]);
 
-  const onConnectButtonClicked = useCallback(async () => {
-    // Generate room connection details, including:
-    //   - A random Room name
-    //   - A random Participant name
-    //   - An Access Token to permit the participant to join the room
-    //   - The URL of the LiveKit server to connect to
-    //
-    // In real-world application, you would likely allow the user to specify their
-    // own participant name, and possibly to choose from existing rooms to join.
-
-    try {
-      // Explicitly request microphone access before initiating connection
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      // Stop tracks immediately as LiveKitRoom will manage its own tracks
-      stream.getTracks().forEach(track => track.stop());
-    } catch (err) {
-      console.error("Microphone access denied or error:", err);
-      onDeviceFailure(err as MediaDeviceFailure);
-      return;
+  const onConnectButtonClicked = useCallback(async (mode: "voice" | "text") => {
+    if (mode === "voice") {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        stream.getTracks().forEach(track => track.stop());
+      } catch (err) {
+        console.error("Microphone access denied or error:", err);
+        onDeviceFailure(err as MediaDeviceFailure);
+        return;
+      }
     }
 
+    setSessionMode(mode);
     lastActivityRef.current = Date.now();
-    setTranscriptions([]); // Clear old transcriptions
+    setTranscriptions([]);
 
     const url = new URL(
       process.env.NEXT_PUBLIC_CONN_DETAILS_ENDPOINT ??
@@ -306,16 +299,12 @@ export default function Page() {
         token={connectionDetails?.participantToken}
         serverUrl={connectionDetails?.serverUrl}
         connect={connectionDetails !== undefined}
-        audio={{
-            echoCancellation: true,
-            noiseSuppression: true,
-            autoGainControl: true,
-            channelCount: 1,
-        }}
+        audio={sessionMode === "text" ? false : { echoCancellation: true, noiseSuppression: true, autoGainControl: true, channelCount: 1 }}
         video={false}
         onMediaDeviceFailure={onDeviceFailure}
         onDisconnected={() => {
           updateConnectionDetails(undefined);
+          setSessionMode(null);
         }}
         className="flex flex-col h-full overflow-hidden"
       >
@@ -323,24 +312,26 @@ export default function Page() {
           agentState={agentState}
           lastActivityRef={lastActivityRef}
           inactivityIntervalRef={inactivityIntervalRef}
-          timeoutMs={15000}
+          timeoutMs={sessionMode === "text" ? 5 * 60 * 1000 : 15_000}
           setTranscriptions={setTranscriptions}
         />
-        <SimpleVoiceAssistant onStateChange={setAgentState}/>
+        <SimpleVoiceAssistant onStateChange={setAgentState} sessionMode={sessionMode}/>
         <ControlBar
           onConnectButtonClicked={onConnectButtonClicked}
           agentState={agentState}
+          sessionMode={sessionMode}
         />
         <RoomAudioRenderer />
         <NoAgentNotification state={agentState} />
         <Transcriptions transcriptions={transcriptions} setTranscriptions={setTranscriptions}/>
-        <SessionCues agentState={agentState} setTranscriptions={setTranscriptions} />
+        <TextInput agentState={agentState} setTranscriptions={setTranscriptions} lastActivityRef={lastActivityRef} />
+        <SessionCues agentState={agentState} setTranscriptions={setTranscriptions} sessionMode={sessionMode} />
       </LiveKitRoom>
     </main>
   );
 }
 
-function SimpleVoiceAssistant({ onStateChange }: { onStateChange: (state: AgentState) => void }) {
+function SimpleVoiceAssistant({ onStateChange, sessionMode }: { onStateChange: (state: AgentState) => void; sessionMode: "voice" | "text" | null }) {
   const { state, audioTrack } = useVoiceAssistant();
 
   useEffect(() => {
@@ -406,15 +397,18 @@ function SimpleVoiceAssistant({ onStateChange }: { onStateChange: (state: AgentS
           </div>
           <BarVisualizer state={state} barCount={5} trackRef={audioTrack} className="agent-visualizer"
                          options={{minHeight: 24}} style={{ height: '120px' }}/>
-          <StatusIndicator state={state} />
-          <div style={{textAlign: "center", color: "gray", marginBottom: '4px', fontSize: '12px' }}>{state}</div>
+          <StatusIndicator state={state} sessionMode={sessionMode} />
+          <div style={{textAlign: "center", color: "gray", marginBottom: '4px', fontSize: '12px' }}>
+            {sessionMode === "text" && state === "listening" ? "ready" : state}
+          </div>
       </div>
   );
 }
 
 function ControlBar(props: {
-  onConnectButtonClicked: () => void;
+  onConnectButtonClicked: (mode: "voice" | "text") => void;
   agentState: AgentState;
+  sessionMode: "voice" | "text" | null;
 }) {
     const [noisyMode, setNoisyMode] = useState(false);
     const { health, details: healthDetails } = useNetworkHealth(250);
@@ -424,16 +418,26 @@ function ControlBar(props: {
     <div className="relative shrink-0" style={{ display: "flex", flexDirection: "column", marginBottom: '8px', minHeight: 80 }}>
       <AnimatePresence>
         {props.agentState === "disconnected" && (
-          <motion.button
+          <motion.div
             initial={{ opacity: 0, top: 20, width: 'fit-content', marginLeft: 'auto', marginRight: 'auto' }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0, top: "-10px" }}
             transition={{ duration: 1, ease: [0.09, 1.04, 0.245, 1.055] }}
-            className="uppercase left-1/2 px-4 py-2 bg-white text-black rounded-md"
-            onClick={() => props.onConnectButtonClicked()}
+            className="flex gap-3 justify-center"
           >
-            Start a conversation
-          </motion.button>
+            <button
+              className="uppercase px-4 py-2 bg-white text-black rounded-md font-semibold"
+              onClick={() => props.onConnectButtonClicked("voice")}
+            >
+              Start Voice Session
+            </button>
+            <button
+              className="uppercase px-4 py-2 bg-transparent text-gray-400 border border-gray-600 rounded-md hover:border-gray-400 hover:text-gray-200 transition-colors"
+              onClick={() => props.onConnectButtonClicked("text")}
+            >
+              Start Text Session
+            </button>
+          </motion.div>
         )}
       </AnimatePresence>
       <AnimatePresence>
@@ -446,18 +450,22 @@ function ControlBar(props: {
               transition={{ duration: 0.4, ease: [0.09, 1.04, 0.245, 1.055] }}
               className="flex h-8 justify-center"
             >
-              <VoiceAssistantControlBar controls={{ leave: false }} />
+              {props.sessionMode !== "text" && (
+                <VoiceAssistantControlBar controls={{ leave: false }} />
+              )}
               <DisconnectButton>
                 <CloseIcon />
               </DisconnectButton>
             </motion.div>
           )}
       </AnimatePresence>
-        <div style={{ marginLeft: 'auto', marginRight: 'auto', width: 'fit-content', marginTop: '10px', marginBottom: '10px' }}>
-            <input id='noisy-mode' type='checkbox' checked={noisyMode} onChange={() => setNoisyMode(!noisyMode)}/>
-            <label htmlFor="noisy-mode" style={{ paddingLeft: 10, color: 'gray' }}>Noisy Environment Mode</label>
-        </div>
-      {(props.agentState === "listening" || props.agentState === "speaking") &&
+        {props.sessionMode !== "text" && (
+          <div style={{ marginLeft: 'auto', marginRight: 'auto', width: 'fit-content', marginTop: '10px', marginBottom: '10px' }}>
+              <input id='noisy-mode' type='checkbox' checked={noisyMode} onChange={() => setNoisyMode(!noisyMode)}/>
+              <label htmlFor="noisy-mode" style={{ paddingLeft: 10, color: 'gray' }}>Noisy Environment Mode</label>
+          </div>
+        )}
+      {props.sessionMode !== "text" && (props.agentState === "listening" || props.agentState === "speaking") &&
         <PushToTalk noisyMode={noisyMode} />
       }
         {props.agentState !== "disconnected" && props.agentState !== "connecting" &&
@@ -620,18 +628,76 @@ function PushToTalk({ noisyMode }: { noisyMode: boolean }) {
     );
 }
 
+function TextInput({
+  agentState,
+  setTranscriptions,
+  lastActivityRef,
+}: {
+  agentState: AgentState;
+  setTranscriptions: React.Dispatch<React.SetStateAction<TranscriptionEntry[]>>;
+  lastActivityRef: React.MutableRefObject<number>;
+}) {
+  const room = useRoomContext();
+  const [text, setText] = useState("");
+
+  if (agentState === "disconnected" || agentState === "connecting") return null;
+
+  const submit = () => {
+    const trimmed = text.trim();
+    if (!trimmed) return;
+    const encoder = new TextEncoder();
+    room.localParticipant.publishData(
+      encoder.encode(JSON.stringify({ type: "text_input", text: trimmed })),
+      { reliable: true }
+    );
+    setTranscriptions((prev) => [
+      ...prev,
+      {
+        speaker: "You",
+        text: trimmed,
+        isFinal: true,
+        segmentId: `text-${Date.now()}`,
+        ts: Date.now(),
+      },
+    ]);
+    lastActivityRef.current = Date.now();
+    setText("");
+  };
+
+  return (
+    <div className="flex gap-2 max-w-[90vw] mx-auto mb-4 px-2">
+      <input
+        type="text"
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+        onKeyDown={(e) => { if (e.key === "Enter") submit(); }}
+        placeholder="Type a message…"
+        className="flex-1 bg-gray-800 border border-gray-600 rounded-md px-3 py-2 text-sm text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-orange-500"
+      />
+      <button
+        onClick={submit}
+        className="px-4 py-2 bg-orange-600 hover:bg-orange-500 text-white text-sm rounded-md"
+      >
+        Send
+      </button>
+    </div>
+  );
+}
+
 function SessionCues({
                          agentState,
                          readyUrl = "/sounds/ready.mp3",
                          stopUrl = "/sounds/stop.mp3",
                          readyMuteMs = 500,
-                         setTranscriptions
+                         setTranscriptions,
+                         sessionMode,
                      }: {
     agentState: AgentState;
     readyUrl?: string;
     stopUrl?: string;
     readyMuteMs?: number;
     setTranscriptions: React.Dispatch<React.SetStateAction<TranscriptionEntry[]>>;
+    sessionMode: "voice" | "text" | null;
 }) {
     const room = useRoomContext();
 
@@ -685,25 +751,31 @@ function SessionCues({
 
         const run = async () => {
             try {
-                // Mute mic so the cue isn't sent to the agent
-                await room.localParticipant.setMicrophoneEnabled(false);
+                if (sessionMode !== "text") {
+                    // Mute mic so the cue isn't sent to the agent
+                    await room.localParticipant.setMicrophoneEnabled(false);
+                }
 
                 if (readyAudioRef.current) {
                     readyAudioRef.current.currentTime = 0;
                     await readyAudioRef.current.play().catch(() => {});
                 }
 
-                if (timeoutRef.current) window.clearTimeout(timeoutRef.current);
-                timeoutRef.current = window.setTimeout(async () => {
-                    if (room.state === ConnectionState.Connected) {
-                        await room.localParticipant.setMicrophoneEnabled(true);
-                    }
-                }, readyMuteMs);
+                if (sessionMode !== "text") {
+                    if (timeoutRef.current) window.clearTimeout(timeoutRef.current);
+                    timeoutRef.current = window.setTimeout(async () => {
+                        if (room.state === ConnectionState.Connected) {
+                            await room.localParticipant.setMicrophoneEnabled(true);
+                        }
+                    }, readyMuteMs);
+                }
             } catch {
                 // Avoid leaving mic disabled if anything fails
-                try {
-                    await room.localParticipant.setMicrophoneEnabled(true);
-                } catch {}
+                if (sessionMode !== "text") {
+                    try {
+                        await room.localParticipant.setMicrophoneEnabled(true);
+                    } catch {}
+                }
             }
         };
 
@@ -712,7 +784,7 @@ function SessionCues({
         return () => {
             if (timeoutRef.current) window.clearTimeout(timeoutRef.current);
         };
-    }, [agentState, room, readyMuteMs]);
+    }, [agentState, room, readyMuteMs, sessionMode]);
 
     // Play STOP on disconnect (room event)
     useEffect(() => {
