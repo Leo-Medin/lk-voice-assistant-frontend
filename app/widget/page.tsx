@@ -404,6 +404,7 @@ function SessionCues({
 function WidgetPageInner() {
   const searchParams = useSearchParams();
   const title = searchParams.get("title") ?? "AI Assistant";
+  const tenantId = searchParams.get("tenantId") ?? "autolife";
 
   const [connectionDetails, updateConnectionDetails] = useState<ConnectionDetails | undefined>(undefined);
   const [agentState, setAgentState] = useState<AgentState>("disconnected");
@@ -445,10 +446,11 @@ function WidgetPageInner() {
       process.env.NEXT_PUBLIC_CONN_DETAILS_ENDPOINT ?? "/api/connection-details",
       window.location.origin
     );
+    url.searchParams.set("tenantId", tenantId);
     const response = await fetch(url.toString());
     const connectionDetailsData = await response.json();
     updateConnectionDetails(connectionDetailsData);
-  }, []);
+  }, [tenantId]);
 
   return (
     <main

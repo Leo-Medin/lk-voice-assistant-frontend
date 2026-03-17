@@ -10,7 +10,7 @@ import {
   AgentState,
   DisconnectButton,
 } from "@livekit/components-react";
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState, Suspense } from "react";
 import {MediaDeviceFailure, RoomEvent} from "livekit-client";
 import type { ConnectionDetails } from "./api/connection-details/route";
 import { NoAgentNotification } from "@/components/NoAgentNotification";
@@ -19,6 +19,7 @@ import Transcriptions, {TranscriptionEntry} from "./components/Transcriptions";
 import { useRoomContext } from "@livekit/components-react";
 import { ConnectionState } from "livekit-client";
 import { Mic, Ear, Loader2, PowerOff, MessageSquare } from "lucide-react";
+import { useSearchParams } from "next/navigation";
 type NetHealth = "good" | "degraded" | "bad" | "unknown";
 
 interface Citation {
@@ -237,7 +238,10 @@ function useEventLoopLag(sampleMs = 500) {
     return lagMs;
 }
 
-export default function Page() {
+function PageInner() {
+  const searchParams = useSearchParams();
+  const tenantId = searchParams.get("tenantId") ?? "autolife";
+
   const [connectionDetails, updateConnectionDetails] = useState<
     ConnectionDetails | undefined
   >(undefined);
@@ -285,10 +289,11 @@ export default function Page() {
       "/api/connection-details",
       window.location.origin
     );
+    url.searchParams.set("tenantId", tenantId);
     const response = await fetch(url.toString());
     const connectionDetailsData = await response.json();
     updateConnectionDetails(connectionDetailsData);
-  }, []);
+  }, [tenantId]);
 
   return (
     <main
@@ -328,6 +333,14 @@ export default function Page() {
         <SessionCues agentState={agentState} setTranscriptions={setTranscriptions} sessionMode={sessionMode} />
       </LiveKitRoom>
     </main>
+  );
+}
+
+export default function Page() {
+  return (
+    <Suspense>
+      <PageInner />
+    </Suspense>
   );
 }
 
