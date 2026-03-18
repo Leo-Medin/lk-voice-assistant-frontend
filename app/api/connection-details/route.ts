@@ -14,8 +14,6 @@ const LIVEKIT_URL = process.env.LIVEKIT_URL;
 // don't cache the results
 export const revalidate = 0;
 
-const DEFAULT_TENANT = "autolife";
-
 async function streamToString(stream: unknown): Promise<string> {
   if (!stream) throw new Error("Empty S3 response body");
   const chunks: Uint8Array[] = [];
@@ -61,7 +59,10 @@ export async function GET(req: Request) {
     }
 
     const { searchParams } = new URL(req.url);
-    const tenantId = searchParams.get("tenantId") ?? DEFAULT_TENANT;
+    const tenantId = searchParams.get("tenantId");
+    if (!tenantId) {
+      return new NextResponse("Missing required parameter: tenantId", { status: 400 });
+    }
 
     if (!(await isValidTenant(tenantId))) {
       return new NextResponse(`Unknown tenant: ${tenantId}`, { status: 400 });

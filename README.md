@@ -32,9 +32,7 @@ Every page and API endpoint is tenant-scoped via a `tenantId` query parameter.
 | `http://localhost:3000/?tenantId=autolife` | Full-page UI for tenant `autolife` |
 | `http://localhost:3000/widget?tenantId=autolife&title=Autolife` | Embeddable widget for tenant `autolife` |
 
-If `tenantId` is omitted, it defaults to `autolife`.
-
-`/api/connection-details` validates the requested `tenantId` against `tenants/registry.json` in S3 (the same registry managed by `lk-kb-admin`). Unknown or admin-only tenants receive a `400` response. New tenants created through the admin UI are automatically accepted — no code changes or redeployment needed.
+`tenantId` is required. Omitting it returns a `400` on the API and shows an error inside the widget. Unknown or admin-only tenants also return `400`. New tenants created through the admin UI are automatically accepted — no code changes or redeployment needed.
 
 The room name passed to the LiveKit agent encodes the tenant: `{tenantId}-room-{random}`. The agent uses this prefix to load the correct KB and config from S3.
 

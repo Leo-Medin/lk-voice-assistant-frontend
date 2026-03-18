@@ -404,7 +404,7 @@ function SessionCues({
 function WidgetPageInner() {
   const searchParams = useSearchParams();
   const title = searchParams.get("title") ?? "AI Assistant";
-  const tenantId = searchParams.get("tenantId") ?? "autolife";
+  const tenantId = searchParams.get("tenantId");
 
   const [connectionDetails, updateConnectionDetails] = useState<ConnectionDetails | undefined>(undefined);
   const [agentState, setAgentState] = useState<AgentState>("disconnected");
@@ -446,11 +446,22 @@ function WidgetPageInner() {
       process.env.NEXT_PUBLIC_CONN_DETAILS_ENDPOINT ?? "/api/connection-details",
       window.location.origin
     );
-    url.searchParams.set("tenantId", tenantId);
+    url.searchParams.set("tenantId", tenantId!);
     const response = await fetch(url.toString());
     const connectionDetailsData = await response.json();
     updateConnectionDetails(connectionDetailsData);
   }, [tenantId]);
+
+  if (!tenantId) {
+    return (
+      <main data-lk-theme="default" className="h-full flex flex-col bg-[var(--lk-bg)] overflow-hidden">
+        <WidgetHeader title={title} />
+        <div className="flex-1 flex items-center justify-center text-sm text-red-500 p-4 text-center">
+          Missing required parameter: <code className="ml-1">tenantId</code>
+        </div>
+      </main>
+    );
+  }
 
   return (
     <main
