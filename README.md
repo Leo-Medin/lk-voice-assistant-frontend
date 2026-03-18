@@ -2,18 +2,41 @@
 
 ## Development setup
 
-- Copy and rename `.env.example` to `.env.local`, then add the required environment variables to connect to your LiveKit server.
+Copy `.env.example` to `.env.local` and fill in all required values:
 
+```env
+# LiveKit server
+LIVEKIT_URL=wss://...
+LIVEKIT_API_KEY=
+LIVEKIT_API_SECRET=
+
+# AWS — used to validate tenantId against the S3 registry
+AWS_ACCESS_KEY_ID=
+AWS_SECRET_ACCESS_KEY=
+KB_S3_BUCKET=your-bucket-name
+KB_S3_REGION=eu-central-1
+```
 
 ```shell
-# Make sure dependencies are installed (only required once).
 pnpm install
-# Run den local development server.
 pnpm dev
 # Open http://localhost:3000 in your browser.
 ```
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Multi-tenant routing
+
+Every page and API endpoint is tenant-scoped via a `tenantId` query parameter.
+
+| URL | Description |
+|---|---|
+| `http://localhost:3000/?tenantId=autolife` | Full-page UI for tenant `autolife` |
+| `http://localhost:3000/widget?tenantId=autolife&title=Autolife` | Embeddable widget for tenant `autolife` |
+
+If `tenantId` is omitted, it defaults to `autolife`.
+
+`/api/connection-details` validates the requested `tenantId` against `tenants/registry.json` in S3 (the same registry managed by `lk-kb-admin`). Unknown or admin-only tenants receive a `400` response. New tenants created through the admin UI are automatically accepted — no code changes or redeployment needed.
+
+The room name passed to the LiveKit agent encodes the tenant: `{tenantId}-room-{random}`. The agent uses this prefix to load the correct KB and config from S3.
 
 ---
 
@@ -26,9 +49,9 @@ The assistant can be embedded on any external website as a floating chat button 
 ```
 External host page
   └── embed.js (loaded via <script> tag)
-        └── Injects floating FAB button + iframe pointing to /widget
+        └── Injects floating FAB button + iframe pointing to /widget?tenantId=...
               └── app/widget/page.tsx (self-contained React UI)
-                    └── Calls /api/connection-details (same origin — no CORS needed)
+                    └── Calls /api/connection-details?tenantId=... (same origin — no CORS needed)
 ```
 
 The iframe provides hard CSS isolation and sandboxes the LiveKit/WebRTC stack from the host page. The `allow="microphone"` attribute on the iframe grants mic access.
@@ -42,6 +65,7 @@ The `/widget` page and `/api/connection-details` endpoint are **public** (no aut
   src="https://yourapp.com/embed.js"
   data-widget-url="https://yourapp.com"
   data-title="AI Assistant"
+  data-tenant-id="autolife"
   data-position="bottom-right"
   data-accent-color="#f97316"
   async
@@ -54,6 +78,7 @@ The `/widget` page and `/api/connection-details` endpoint are **public** (no aut
 |---|---|---|
 | `data-widget-url` | *(required on external sites)* | Base URL of the hosted Next.js app |
 | `data-title` | `"AI Assistant"` | Title shown in the widget header |
+| `data-tenant-id` | `"autolife"` | Tenant identifier — must exist in the S3 registry |
 | `data-position` | `"bottom-right"` | `"bottom-right"` or `"bottom-left"` |
 | `data-accent-color` | `"#f97316"` | FAB button background color |
 | `data-z-index` | `9999` | CSS z-index of the FAB |
